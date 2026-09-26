@@ -26,7 +26,7 @@ def get_args_parser():
     parser.add_argument("--w_smooth", default=0.1, type=float)
     parser.add_argument("--save_freq", default=2000, type=int)
     parser.add_argument("--load_checkpoint", action="store_true")
-    parser.add_argument('--device', default='cuda', type=str) 
+    parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu', type=str)
     parser.add_argument('--load_feat', action='store_true') 
     return parser
 
@@ -96,7 +96,7 @@ def train_model(args):
     start_time = time.time()
 
     if args.load_checkpoint:
-        checkpoint = torch.load(f"checkpoint_{args.type}.pth")
+        checkpoint = torch.load(f"checkpoint_{args.type}.pth", map_location=args.device)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_iter = checkpoint["step"]

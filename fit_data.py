@@ -23,14 +23,14 @@ def get_args_parser():
     parser.add_argument('--n_points', default=5000, type=int)
     parser.add_argument('--w_chamfer', default=1.0, type=float)
     parser.add_argument('--w_smooth', default=0.1, type=float)
-    parser.add_argument('--device', default='cuda', type=str) 
+    parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu', type=str)
     return parser
 
 def fit_mesh(mesh_src, mesh_tgt, args):
     start_iter = 0
     start_time = time.time()
 
-    deform_vertices_src = torch.zeros(mesh_src.verts_packed().shape, requires_grad=True, device='cuda')
+    deform_vertices_src = torch.zeros(mesh_src.verts_packed().shape, requires_grad=True, device=mesh_src.device)
     optimizer = torch.optim.Adam([deform_vertices_src], lr = args.lr)
     print("Starting training !")
     for step in range(start_iter, args.max_iter):

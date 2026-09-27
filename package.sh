@@ -11,7 +11,8 @@ DEST="$SCRIPT_DIR/../../${FOLDER_NAME}.zip"
 rm -f "$DEST"
 cd "$SCRIPT_DIR/.."
 zip -rq "$DEST" "$FOLDER_NAME" \
-  -x "*/__pycache__/*" "*.pyc" "*/.ipynb_checkpoints/*" "*/.DS_Store"
+  -x "*/__pycache__/*" "*.pyc" "*/.ipynb_checkpoints/*" "*/.DS_Store" \
+     "$FOLDER_NAME/r2n2_shapenet_dataset*" "$FOLDER_NAME/.git/*"
 
 size_mb=$(du -m "$DEST" | cut -f1)
 echo "Created $DEST (${size_mb} MB)"

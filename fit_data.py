@@ -19,6 +19,7 @@ def get_args_parser():
     parser = argparse.ArgumentParser('Model Fit', add_help=False)
     parser.add_argument('--lr', default=4e-4, type=float)
     parser.add_argument('--max_iter', default=100000, type=int)
+    parser.add_argument('--test', action="store_true")
     parser.add_argument('--type', default='vox', choices=['vox', 'point', 'mesh'], type=str)
     parser.add_argument('--n_points', default=5000, type=int)
     parser.add_argument('--w_chamfer', default=1.0, type=float)
@@ -127,8 +128,12 @@ def train_model(args):
         voxel_coords = feed_cuda['voxel_coords'].unsqueeze(0)
         voxels_tgt = feed_cuda['voxels']
 
+        if args.test:
+            return voxels_tgt
+
         # fitting
         fit_voxel(voxels_src, voxels_tgt, args)
+        return voxels_src.detach()
 
 
     elif args.type == "point":
@@ -137,8 +142,12 @@ def train_model(args):
         mesh_tgt = Meshes(verts=[feed_cuda['verts']], faces=[feed_cuda['faces']])
         pointclouds_tgt = sample_points_from_meshes(mesh_tgt, args.n_points)
 
+        if args.test:
+            return pointclouds_tgt
+
         # fitting
-        fit_pointcloud(pointclouds_src, pointclouds_tgt, args)        
+        fit_pointcloud(pointclouds_src, pointclouds_tgt, args)
+        return pointclouds_src.detach()
     
     elif args.type == "mesh":
         # initialization
@@ -146,8 +155,12 @@ def train_model(args):
         mesh_src = ico_sphere(4, args.device)
         mesh_tgt = Meshes(verts=[feed_cuda['verts']], faces=[feed_cuda['faces']])
 
+        if args.test:
+            return mesh_tgt
+
         # fitting
         fit_mesh(mesh_src, mesh_tgt, args)        
+        return mesh_src.detach()
 
 
     

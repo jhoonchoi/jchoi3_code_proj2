@@ -11,9 +11,6 @@ from pytorch3d.ops import knn_points
 import mcubes
 import utils_vox
 import matplotlib.pyplot as plt 
-from pytorch3d.transforms import Rotate, axis_angle_to_matrix
-import math
-import numpy as np
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Singleto3D', add_help=False)
@@ -88,29 +85,22 @@ def compute_sampling_metrics(pred_points, gt_points, thresholds, eps=1e-8):
 def evaluate(predictions, mesh_gt, thresholds, args):
     if args.type == "vox":
         voxels_src = predictions
-        H,W,D = voxels_src.shape[2:]
+        Z,Y,X = voxels_src.shape[-3:]
         vertices_src, faces_src = mcubes.marching_cubes(voxels_src.detach().cpu().squeeze().numpy(), isovalue=0.5)
-        vertices_src = torch.tensor(vertices_src).float()
+        # marching cubes returns verts in the grid's [z, y, x] index order
+        vertices_src = torch.tensor(vertices_src).float()[:, [2, 1, 0]]
         faces_src = torch.tensor(faces_src.astype(int))
         mesh_src = pytorch3d.structures.Meshes([vertices_src], [faces_src])
         pred_points = sample_points_from_meshes(mesh_src, args.n_points)
-        pred_points = utils_vox.Mem2Ref(pred_points, H, W, D)
-        # Apply a rotation transform to align predicted voxels to gt mesh
-        angle = -math.pi
-        axis_angle = torch.as_tensor(np.array([[0.0, angle, 0.0]]))
-        Rot = axis_angle_to_matrix(axis_angle)
-        T_transform = Rotate(Rot)
-        pred_points = T_transform.transform_points(pred_points)
-        # re-center the predicted points
-        pred_points = pred_points - pred_points.mean(1, keepdim=True)
+        # voxel index space -> world coordinates (inverse of the dataset voxelization);
+        # r2n2_custom puts the voxels in the mesh frame, so no further alignment
+        pred_points = utils_vox.Mem2Ref(pred_points, Z, Y, X)
     elif args.type == "point":
         pred_points = predictions.cpu()
     elif args.type == "mesh":
         pred_points = sample_points_from_meshes(predictions, args.n_points).cpu()
 
     gt_points = sample_points_from_meshes(mesh_gt, args.n_points)
-    if args.type == "vox":
-        gt_points = gt_points - gt_points.mean(1, keepdim=True)
     metrics = compute_sampling_metrics(pred_points, gt_points, thresholds)
     return metrics
 

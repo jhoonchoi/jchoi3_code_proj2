@@ -343,6 +343,12 @@ class R2N2(ShapeNetBase):  # pragma: no cover
             with open(voxel_path, "rb") as f:
                 # Read voxel coordinates as a tensor of shape (N, 3).
                 voxel_coords = read_binvox_coords(f)
+            # The binvox axes are rotated 90 degrees about y relative to the mesh
+            # verts; rotate them back, (x, y, z) -> (z, y, -x), before align_bbox
+            # so each axis is fit to its own mesh extent.
+            voxel_coords = torch.stack(
+                [voxel_coords[:, 2], voxel_coords[:, 1], -voxel_coords[:, 0]], dim=1
+            )
             # Align voxels to the same coordinate system as mesh verts.
             voxel_coords = align_bbox(voxel_coords, model["verts"])
             model["voxel_coords"] = voxel_coords

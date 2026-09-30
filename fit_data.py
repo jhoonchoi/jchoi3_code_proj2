@@ -19,7 +19,7 @@ def get_args_parser():
     parser = argparse.ArgumentParser('Model Fit', add_help=False)
     parser.add_argument('--lr', default=4e-4, type=float)
     parser.add_argument('--max_iter', default=100000, type=int)
-    parser.add_argument('--test', action="store_true")
+    parser.add_argument('--test', action="store_true")  # skip fitting; return the initialization
     parser.add_argument('--type', default='vox', choices=['vox', 'point', 'mesh'], type=str)
     parser.add_argument('--n_points', default=5000, type=int)
     parser.add_argument('--w_chamfer', default=1.0, type=float)
@@ -61,6 +61,7 @@ def fit_mesh(mesh_src, mesh_tgt, args):
     mesh_src.offset_verts_(deform_vertices_src)
 
     print('Done!')
+    return mesh_src
 
 
 def fit_pointcloud(pointclouds_src, pointclouds_tgt, args):
@@ -84,6 +85,7 @@ def fit_pointcloud(pointclouds_src, pointclouds_tgt, args):
         print("[%4d/%4d]; ttime: %.0f (%.2f); loss: %.3f" % (step, args.max_iter, total_time,  iter_time, loss_vis))
     
     print('Done!')
+    return pointclouds_src
 
 
 def fit_voxel(voxels_src, voxels_tgt, args):
@@ -107,6 +109,7 @@ def fit_voxel(voxels_src, voxels_tgt, args):
         print("[%4d/%4d]; ttime: %.0f (%.2f); loss: %.3f" % (step, args.max_iter, total_time,  iter_time, loss_vis))
     
     print('Done!')
+    return voxels_src
 
 
 def train_model(args):
@@ -128,12 +131,12 @@ def train_model(args):
         voxel_coords = feed_cuda['voxel_coords'].unsqueeze(0)
         voxels_tgt = feed_cuda['voxels']
 
-        if args.test:
-            return voxels_tgt
-
         # fitting
-        fit_voxel(voxels_src, voxels_tgt, args)
-        return voxels_src.detach()
+        if not args.test:
+            voxels_src = fit_voxel(voxels_src, voxels_tgt, args)
+
+        # voxel_loss works on logits; return occupancy probabilities like the target
+        return torch.sigmoid(voxels_src.detach()), voxels_tgt
 
 
     elif args.type == "point":
@@ -142,12 +145,11 @@ def train_model(args):
         mesh_tgt = Meshes(verts=[feed_cuda['verts']], faces=[feed_cuda['faces']])
         pointclouds_tgt = sample_points_from_meshes(mesh_tgt, args.n_points)
 
-        if args.test:
-            return pointclouds_tgt
-
         # fitting
-        fit_pointcloud(pointclouds_src, pointclouds_tgt, args)
-        return pointclouds_src.detach()
+        if not args.test:
+            pointclouds_src = fit_pointcloud(pointclouds_src, pointclouds_tgt, args)
+
+        return pointclouds_src.detach(), pointclouds_tgt
     
     elif args.type == "mesh":
         # initialization
@@ -155,12 +157,11 @@ def train_model(args):
         mesh_src = ico_sphere(4, args.device)
         mesh_tgt = Meshes(verts=[feed_cuda['verts']], faces=[feed_cuda['faces']])
 
-        if args.test:
-            return mesh_tgt
-
         # fitting
-        fit_mesh(mesh_src, mesh_tgt, args)        
-        return mesh_src.detach()
+        if not args.test:
+            mesh_src = fit_mesh(mesh_src, mesh_tgt, args)
+
+        return mesh_src.detach(), mesh_tgt
 
 
     

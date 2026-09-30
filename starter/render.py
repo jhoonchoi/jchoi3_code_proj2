@@ -16,7 +16,10 @@ from pytorch3d.renderer import (
     HardFlatShader,
 )
 
-from starter.media import to_uint8, save_gif
+import utils_vox
+from starter.media import to_uint8, save_gif, hstack_frames
+
+DEFAULT_COLOR = (0.7, 0.7, 1.0)
 
 
 def get_device():
@@ -94,6 +97,7 @@ def get_mesh_renderer(image_size=512, lights=None, device=None, flat=False):
 """
 Helper function to render reused turntable view & save gif
 """
+@torch.no_grad()
 def render_turntable(
     obj,
     dist=3.0,
@@ -112,7 +116,7 @@ def render_turntable(
     device=None,
     progress=True,
 ):
-# The device tells us whether we are rendering with GPU or CPU. The rendering will
+    # The device tells us whether we are rendering with GPU or CPU. The rendering will
     # be *much* faster if you have a CUDA-enabled NVIDIA GPU. However, your code will
     # still run fine on a CPU.
     # The default is to run on CPU, so if you do not have a GPU, you do not need to
@@ -189,73 +193,109 @@ def render_turntable(
 
 
 """
+Converters from fit_data / eval_model outputs to renderable Pytorch3D structures.
+Each builds a new object, so the caller's tensors and meshes are never modified.
+"""
+def color_mesh(mesh, color=DEFAULT_COLOR):
+    """
+    Returns the first mesh of a (possibly untextured) Meshes batch with a solid
+    vertex color.
+    """
+    verts = mesh.verts_list()[0]
+    faces = mesh.faces_list()[0]
+    texture = torch.ones_like(verts) * torch.tensor(color, device=verts.device)
+    return pytorch3d.structures.Meshes(
+        verts=[verts],
+        faces=[faces],
+        textures=pytorch3d.renderer.TexturesVertex(verts_features=[texture]),
+    )
+
+
+def color_points(points, lo=-0.4, hi=0.4):
+    """
+    Builds a point cloud from (1, N, 3) points, colored by position.
+    """
+    color = ((points - lo) / (hi - lo)).clamp(0.0, 1.0)
+    return pytorch3d.structures.Pointclouds(points=points, features=color)
+
+
+def voxels_to_mesh(voxels, thresh=0.5, color=DEFAULT_COLOR):
+    """
+    Converts a voxel grid to a mesh with one cube per occupied voxel, in the same
+    world frame as the R2N2 ground-truth mesh.
+
+    Args:
+        voxels (torch.Tensor): (1, Z, Y, X) occupancy probabilities, indexed
+            [z, y, x] as produced by utils_vox.voxelize_xyz.
+        thresh (float): Voxels with occupancy >= thresh are drawn.
+    """
+    Z, Y, X = voxels.shape[-3:]
+
+    # cubify reads the grid as (D, H, W) = (Z, Y, X), emits (x, y, z) verts, and
+    # with align="center" puts voxel centers on linspace(-1, 1) along each axis
+    mesh = cubify(voxels.reshape(1, Z, Y, X), thresh, align="center")
+    verts = mesh.verts_list()[0]
+
+    # [-1, 1] -> voxel index space -> world coordinates (inverse of the dataset voxelization)
+    size = torch.tensor([X, Y, Z], dtype=verts.dtype, device=verts.device)
+    verts = (verts + 1.0) * (size - 1.0) / 2.0
+    verts = utils_vox.Mem2Ref(verts.unsqueeze(0), Z, Y, X, device=verts.device).squeeze(0)
+
+    return color_mesh(
+        pytorch3d.structures.Meshes(verts=[verts], faces=mesh.faces_list()), color
+    )
+
+
+@torch.no_grad()
+def to_renderable(obj, obj_type, device=None):
+    if device is None:
+        device = get_device()
+    obj = obj.to(device)
+
+    if obj_type == "vox":
+        return voxels_to_mesh(obj)
+    elif obj_type == "point":
+        return color_points(obj)
+    elif obj_type == "mesh":
+        return color_mesh(obj)
+    raise ValueError(f"unknown type {obj_type}")
+
+
+"""
 utils to help rendering from train_data outputs
 """
-def render_model(
+def render_frames(
         obj,
         obj_type,
-        output_file,
         dist=1.5,
         elev=15,
         n_frames=72,
         image_size=256,
         device=None,
         flat_shading=False,
-        vox_is_logits=True,
 ):
     if device is None:
         device = get_device()
-    obj = obj.to(device)
-    
-    # color variables
-    lo, hi = -0.4, 0.4
 
-    # detach just in case
-    obj = obj.detach()
-
-    if obj_type == "vox":
-        if vox_is_logits:
-            obj = torch.sigmoid(obj)
-
-        # marching cubes
-        mesh = cubify(
-            voxels=obj,
-            thresh=0.5,
-        )
-
-        # scale
-        mesh.scale_verts_(0.5)
-        
-        # generate color texture
-        texture = torch.ones_like(mesh.verts_padded()) * torch.tensor([0.7, 0.7, 1], device=device)
-        mesh.textures = pytorch3d.renderer.TexturesVertex(verts_features=texture)
-        obj_renderable = mesh
-
-    elif obj_type == "point":
-        color = ((obj - lo) / (hi - lo)).clamp(0.0, 1.0)
-        # build pointcloud
-        obj_renderable = pytorch3d.structures.Pointclouds(
-            points=obj, features=color,
-        )
-
-    elif obj_type == "mesh":
-        # generate color texture
-        texture = torch.ones_like(obj.verts_padded()) * torch.tensor([0.7, 0.7, 1], device=device)
-        obj.textures = pytorch3d.renderer.TexturesVertex(verts_features=texture)
-        obj_renderable = obj
-
-    else:
-        raise ValueError(f"unknown type {obj_type}")
-
-    # render
-    frames = render_turntable(
-        obj_renderable,
+    return render_turntable(
+        to_renderable(obj, obj_type, device=device),
         flat=flat_shading,
         dist=dist,
         elev=elev,
         n_frames=n_frames,
         image_size=image_size,
+        device=device,
     )
 
-    # save gif
-    save_gif(frames, output_file, fps=30)
+
+def render_side_by_side(objs, obj_type, output_file, fps=30, **render_kwargs):
+    """
+    Renders each object on the same turntable and saves them side by side
+    (left to right in the order given) as one gif.
+    """
+    frame_lists = [render_frames(obj, obj_type, **render_kwargs) for obj in objs]
+    return save_gif(hstack_frames(*frame_lists), output_file, fps=fps)
+
+
+def render_model(obj, obj_type, output_file, fps=30, **render_kwargs):
+    return render_side_by_side([obj], obj_type, output_file, fps=fps, **render_kwargs)

@@ -3,3 +3,5 @@ torchvision
 numpy < 2.0.0
 PyMCubes
 matplotlib
+imageio
+tqdm

@@ -9,6 +9,7 @@ from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.structures import Meshes
 import dataset_location
 import torch
+import utils_vis
 
 
 
@@ -24,6 +25,7 @@ def get_args_parser():
     parser.add_argument('--w_chamfer', default=1.0, type=float)
     parser.add_argument('--w_smooth', default=0.1, type=float)
     parser.add_argument('--device', default='cuda' if torch.cuda.is_available() else 'cpu', type=str)
+    parser.add_argument('--output_dir', default='output', type=str)
     return parser
 
 def fit_mesh(mesh_src, mesh_tgt, args):
@@ -60,6 +62,7 @@ def fit_mesh(mesh_src, mesh_tgt, args):
     mesh_src.offset_verts_(deform_vertices_src)
 
     print('Done!')
+    return mesh_src
 
 
 def fit_pointcloud(pointclouds_src, pointclouds_tgt, args):
@@ -83,6 +86,7 @@ def fit_pointcloud(pointclouds_src, pointclouds_tgt, args):
         print("[%4d/%4d]; ttime: %.0f (%.2f); loss: %.3f" % (step, args.max_iter, total_time,  iter_time, loss_vis))
     
     print('Done!')
+    return pointclouds_src
 
 
 def fit_voxel(voxels_src, voxels_tgt, args):
@@ -106,6 +110,7 @@ def fit_voxel(voxels_src, voxels_tgt, args):
         print("[%4d/%4d]; ttime: %.0f (%.2f); loss: %.3f" % (step, args.max_iter, total_time,  iter_time, loss_vis))
     
     print('Done!')
+    return voxels_src
 
 
 def train_model(args):
@@ -128,7 +133,12 @@ def train_model(args):
         voxels_tgt = feed_cuda['voxels']
 
         # fitting
-        fit_voxel(voxels_src, voxels_tgt, args)
+        voxels_src = fit_voxel(voxels_src, voxels_tgt, args)
+
+        # visualize: optimized (left) vs ground truth (right)
+        # voxel_loss is BCE-with-logits, so the fitted grid holds logits
+        vis_src = utils_vis.voxels_to_mesh(torch.sigmoid(voxels_src))
+        vis_tgt = utils_vis.voxels_to_mesh(voxels_tgt)
 
 
     elif args.type == "point":
@@ -138,7 +148,11 @@ def train_model(args):
         pointclouds_tgt = sample_points_from_meshes(mesh_tgt, args.n_points)
 
         # fitting
-        fit_pointcloud(pointclouds_src, pointclouds_tgt, args)        
+        pointclouds_src = fit_pointcloud(pointclouds_src, pointclouds_tgt, args)
+
+        # visualize: optimized (left) vs ground truth (right)
+        vis_src = utils_vis.pointcloud_from_points(pointclouds_src)
+        vis_tgt = utils_vis.pointcloud_from_points(pointclouds_tgt)
     
     elif args.type == "mesh":
         # initialization
@@ -147,7 +161,16 @@ def train_model(args):
         mesh_tgt = Meshes(verts=[feed_cuda['verts']], faces=[feed_cuda['faces']])
 
         # fitting
-        fit_mesh(mesh_src, mesh_tgt, args)        
+        mesh_src = fit_mesh(mesh_src, mesh_tgt, args)
+
+        # visualize: optimized (left) vs ground truth (right)
+        vis_src = utils_vis.colorize_mesh(mesh_src)
+        vis_tgt = utils_vis.colorize_mesh(mesh_tgt)
+
+    os.makedirs(args.output_dir, exist_ok=True)
+    out_path = os.path.join(args.output_dir, f'fit_{args.type}.gif')
+    utils_vis.render_side_by_side([vis_src, vis_tgt], out_path, device=args.device)
+    print(f'Saved {out_path}')
 
 
     

@@ -6,11 +6,7 @@ writeup (projX/assignment.md). Add whatever CLI flags/subcommands you need.
 import argparse
 import torch
 import fit_data
-from starter.render import (
-    render_voxels,
-    render_pointcloud,
-    render_mesh,
-)
+from starter.render import render_model
 from starter.cache import get_cache_filename
 
 
@@ -22,9 +18,27 @@ def fit_voxel(
         n_frames=72,
         image_size=256,
         output_file="output/fit_voxel.gif",
-        cached_pt_file=None,
+        cache_input_file=None,
 ):
-    return
+    # load or fit points
+    if cache_input_file:
+        voxels = torch.load(cache_input_file)
+    else: 
+        voxels = fit_model(
+            type="vox",
+            max_iter=max_iter,
+            cache_output_file=get_cache_filename(output_file)
+        )
+
+    # render & save gif
+    render_model(
+        obj=voxels,
+        obj_type="vox",
+        n_frames=n_frames,
+        image_size=image_size,
+        output_file=output_file,
+        flat_shading=True
+    )
 
 
 """
@@ -48,8 +62,9 @@ def fit_pointcloud(
         )
 
     # render & save gif
-    render_pointcloud(
-        points=points,
+    render_model(
+        obj=points,
+        obj_type="point",
         n_frames=n_frames,
         image_size=image_size,
         output_file=output_file
@@ -66,7 +81,25 @@ def fit_mesh(
         output_file="output/fit_mesh.gif",
         cache_input_file=None,
 ):
-    return
+    # load or fit mesh
+    if cache_input_file:
+        mesh = torch.load(cache_input_file, weights_only=False)
+    else: 
+        mesh = fit_model(
+            type="mesh",
+            max_iter=max_iter,
+            cache_output_file=get_cache_filename(output_file)
+        )
+
+    # render & save gif
+    render_model(
+        obj=mesh,
+        obj_type="mesh",
+        n_frames=n_frames,
+        image_size=image_size,
+        output_file=output_file,
+        flat_shading=True
+    )    
 
 
 """
@@ -77,14 +110,13 @@ def test_visuals(type="vox"):
     args = parser.parse_args(["--type", type, "--test"])
     gt = fit_data.train_model(args)
 
-    if type == "vox":
-        render_voxels(gt, output_file="output/test_"+type+".gif")
-
-    if type == "point":
-        render_pointcloud(gt, output_file="output/test_"+type+".gif")
-
-    if type == "mesh":
-        render_mesh(gt, output_file="output/test_"+type+".gif")
+    render_model(
+        obj=gt, 
+        obj_type=type, 
+        output_file="output/test_"+type+".gif", 
+        vox_is_logits=False,
+        flat_shading=True,
+    )
 
 
 def fit_model(
@@ -92,7 +124,7 @@ def fit_model(
         max_iter=None,
         cache_output_file="output/model.pt",
 ):
-    # fit pointcloud
+    # fit model
     parser = argparse.ArgumentParser(parents=[fit_data.get_args_parser()])
     arg_list = ["--type", type]
     if max_iter:
@@ -107,10 +139,11 @@ def fit_model(
 
 
 def main():
-    # fit_voxel()
-    fit_pointcloud(max_iter=100)
-    # fit_mesh()
-    # test_visuals(type="point")
+    # fit_voxel(max_iter=100)
+    # fit_pointcloud(max_iter=10000)
+    # fit_mesh(max_iter=10000)
+    test_visuals(type="vox")
+    return
 
 
 if __name__ == "__main__":

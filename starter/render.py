@@ -3,6 +3,7 @@ import pytorch3d.renderer
 import pytorch3d.structures
 from tqdm.auto import tqdm
 
+from pytorch3d.ops import cubify
 from pytorch3d.renderer import (
     AlphaCompositor,
     RasterizationSettings,
@@ -164,7 +165,7 @@ def render_turntable(
             elif light_follows_camera:
                 if flat:
                     frame_lights = pytorch3d.renderer.DirectionalLights(
-                        direction=cameras.get_camera_center() + torch.tensor([[1.0,1.0,0.0]]),
+                        direction=cameras.get_camera_center() + torch.tensor([[1.0,1.0,0.0]], device=device),
                         device=device
                     )
                 else:
@@ -190,31 +191,66 @@ def render_turntable(
 """
 utils to help rendering from train_data outputs
 """
-def render_models(
+def render_model(
         obj,
-        type,
+        obj_type,
         output_file,
         dist=1.5,
-        elev=0,
+        elev=15,
         n_frames=72,
         image_size=256,
+        device=None,
+        flat_shading=False,
+        vox_is_logits=True,
 ):
-    if type == "vox":
-        obj_renderable = None
-    if type == "point":
-        # generate colors
-        color = (obj - obj.min()) / (obj.max() - obj.min())
+    if device is None:
+        device = get_device()
+    obj = obj.to(device)
+    
+    # color variables
+    lo, hi = -0.4, 0.4
 
+    # detach just in case
+    obj = obj.detach()
+
+    if obj_type == "vox":
+        if vox_is_logits:
+            obj = torch.sigmoid(obj)
+
+        # marching cubes
+        mesh = cubify(
+            voxels=obj,
+            thresh=0.5,
+        )
+
+        # scale
+        mesh.scale_verts_(0.5)
+        
+        # generate color texture
+        texture = torch.ones_like(mesh.verts_padded()) * torch.tensor([0.7, 0.7, 1], device=device)
+        mesh.textures = pytorch3d.renderer.TexturesVertex(verts_features=texture)
+        obj_renderable = mesh
+
+    elif obj_type == "point":
+        color = ((obj - lo) / (hi - lo)).clamp(0.0, 1.0)
         # build pointcloud
         obj_renderable = pytorch3d.structures.Pointclouds(
             points=obj, features=color,
         )
-    if type == "mesh":
-        obj_renderable = None
-    
+
+    elif obj_type == "mesh":
+        # generate color texture
+        texture = torch.ones_like(obj.verts_padded()) * torch.tensor([0.7, 0.7, 1], device=device)
+        obj.textures = pytorch3d.renderer.TexturesVertex(verts_features=texture)
+        obj_renderable = obj
+
+    else:
+        raise ValueError(f"unknown type {obj_type}")
+
     # render
     frames = render_turntable(
         obj_renderable,
+        flat=flat_shading,
         dist=dist,
         elev=elev,
         n_frames=n_frames,

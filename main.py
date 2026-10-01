@@ -74,18 +74,6 @@ def fit_mesh(
 """
 Helper functions
 """
-def test_visuals(type="vox"):
-    # ground truth only, no fitting
-    _, gt = fit_model(type=type, test=True, cache_output_file=None)
-
-    render_model(
-        obj=gt,
-        obj_type=type,
-        output_file="output/test_"+type+".gif",
-        flat_shading=True,
-    )
-
-
 def fit_and_render(
         type,
         output_file,
@@ -140,9 +128,9 @@ def fit_model(
 
 
 def main():
-    # fit_voxel(max_iter=100)
-    # fit_pointcloud(max_iter=100)
-    # fit_mesh(max_iter=100)
+    # fit_voxel(max_iter=10000)
+    # fit_pointcloud(max_iter=20000)
+    # fit_mesh(max_iter=15000)
     return
 
 

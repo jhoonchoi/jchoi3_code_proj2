@@ -140,10 +140,9 @@ def fit_model(
 
 
 def main():
-    fit_voxel(max_iter=100)
-    fit_pointcloud(max_iter=100)
-    fit_mesh(max_iter=100)
-    test_visuals(type="vox")
+    # fit_voxel(max_iter=100)
+    # fit_pointcloud(max_iter=100)
+    # fit_mesh(max_iter=100)
     return
 
 

@@ -5,7 +5,7 @@ writeup (projX/assignment.md). Add whatever CLI flags/subcommands you need.
 """
 import argparse
 import fit_data
-from starter.render import render_model, render_side_by_side
+from starter.render import render_side_by_side
 from starter.cache import save_cache, load_cache
 
 

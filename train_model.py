@@ -8,6 +8,7 @@ from model import SingleViewto3D
 from pytorch3d.datasets.r2n2.utils import collate_batched_R2N2
 from pytorch3d.ops import sample_points_from_meshes
 from r2n2_custom import R2N2
+from starter.cache import get_checkpoint_path
 
 
 def get_args_parser():
@@ -97,7 +98,7 @@ def train_model(args):
     start_time = time.time()
 
     if args.load_checkpoint:
-        checkpoint = torch.load(f"checkpoint_{args.type}.pth", map_location=args.device)
+        checkpoint = torch.load(get_checkpoint_path(args), map_location=args.device)
         model.load_state_dict(checkpoint["model_state_dict"])
         optimizer.load_state_dict(checkpoint["optimizer_state_dict"])
         start_iter = checkpoint["step"]
@@ -131,14 +132,14 @@ def train_model(args):
         loss_vis = loss.cpu().item()
 
         if (step % args.save_freq) == 0 and step > 0:
-            print(f"Saving checkpoint at step {step}")
+            print(f"Saving checkpoint at step {step} to {get_checkpoint_path(args)}")
             torch.save(
                 {
                     "step": step,
                     "model_state_dict": model.state_dict(),
                     "optimizer_state_dict": optimizer.state_dict(),
                 },
-                f"checkpoint_{args.type}.pth",
+                get_checkpoint_path(args),
             )
 
         print(

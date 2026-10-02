@@ -12,6 +12,7 @@ import mcubes
 import utils_vox
 import matplotlib.pyplot as plt 
 from starter.render import render_comparison
+from starter.cache import get_checkpoint_path
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Singleto3D', add_help=False)
@@ -146,8 +147,9 @@ def evaluate_model(args):
     avg_r_score = []
 
     if args.load_checkpoint:
-        checkpoint = torch.load(f'checkpoint_{args.type}.pth', map_location=args.device)
+        checkpoint = torch.load(get_checkpoint_path(args), map_location=args.device)
         model.load_state_dict(checkpoint['model_state_dict'])
+        print(f"Loaded {get_checkpoint_path(args)} (step {checkpoint['step']})")
         print(f"Succesfully loaded iter {start_iter}")
     
     print("Starting evaluating !")

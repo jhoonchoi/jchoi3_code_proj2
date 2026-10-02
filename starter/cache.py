@@ -11,6 +11,20 @@ def get_cache_filename(output_file):
     return root+".pt"
 
 
+def get_checkpoint_path(args):
+    """
+    Checkpoint file for a train/eval run. Non-default settings that change the
+    model's shape (mesh template, point count) go into the name so different
+    runs never overwrite each other; defaults keep checkpoint_{type}.pth.
+    """
+    name = f"checkpoint_{args.type}"
+    if args.type == "mesh" and args.template != "ico4":
+        name += f"_{args.template}"
+    if args.type == "point" and args.n_points != 1000:
+        name += f"_n{args.n_points}"
+    return name + ".pth"
+
+
 def save_cache(obj, output_file):
     path = get_cache_filename(output_file)
     torch.save(obj, path)

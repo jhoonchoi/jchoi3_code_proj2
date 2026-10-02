@@ -55,7 +55,13 @@ class SingleViewto3D(nn.Module):
             # Input: b x 512
             # Output: b x args.n_points x 3  
             self.n_point = args.n_points
-            # self.decoder =             
+            self.decoder = nn.Sequential(
+                nn.Linear(512, 1024),                       # 512 -> 1024
+                nn.BatchNorm1d(1024),                       # 1024
+                nn.ReLU(),                                  # 1024
+                nn.Linear(1024, 3 * self.n_point),          # 1024 -> 3 * self.n_point
+                nn.Unflatten(1, (self.n_point, 3))          # (self.n_point, 3)
+            )
         elif args.type == "mesh":
             # Input: b x 512
             # Output: b x mesh_pred.verts_packed().shape[0] x 3  
@@ -85,8 +91,7 @@ class SingleViewto3D(nn.Module):
             return voxels_pred
 
         elif args.type == "point":
-            # TODO:
-            # pointclouds_pred =             
+            pointclouds_pred = self.decoder(encoded_feat)
             return pointclouds_pred
 
         elif args.type == "mesh":

@@ -3,8 +3,31 @@ from torchvision import transforms
 import time
 import torch.nn as nn
 import torch
-from pytorch3d.utils import ico_sphere
+import os
+from pytorch3d.utils import ico_sphere, torus
 import pytorch3d
+from starter.cache import load_cache
+
+# Q1.3 fit of training chair 0 (main.fit_mesh): an ico_sphere(4) deformed into a chair
+FITTED_CHAIR_PATH = os.path.join(os.path.dirname(os.path.abspath(__file__)), "output", "fit_mesh.pt")
+
+
+def make_template(name, device):
+    """
+    Template mesh for the mesh decoder to deform. The offset layer is
+    zero-initialized, so every prediction starts exactly at this shape.
+    """
+    if name == "ico4":
+        return ico_sphere(4, device)
+    if name == "chair":
+        fitted, _ = load_cache(FITTED_CHAIR_PATH)
+        return fitted.to(device)
+    if name == "torus":
+        # 40 x 64 = 2560 verts, close to ico_sphere(4)'s 2562; the ring lies in the
+        # xy-plane, so its hole goes front to back through the chair
+        return torus(r=0.1, R=0.3, sides=40, rings=64, device=device)
+    raise ValueError(f"unknown template {name}")
+
 
 class SingleViewto3D(nn.Module):
     def __init__(self, args):
@@ -65,7 +88,7 @@ class SingleViewto3D(nn.Module):
             # Input: b x 512
             # Output: b x mesh_pred.verts_packed().shape[0] x 3  
             # try different mesh initializations
-            mesh_pred = ico_sphere(4, self.device)
+            mesh_pred = make_template(args.template, self.device)
             self.mesh_pred = pytorch3d.structures.Meshes(mesh_pred.verts_list()*args.batch_size, mesh_pred.faces_list()*args.batch_size)
             num_verts = int(self.mesh_pred.num_verts_per_mesh()[0])
 

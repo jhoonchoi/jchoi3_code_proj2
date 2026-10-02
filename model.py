@@ -60,7 +60,6 @@ class SingleViewto3D(nn.Module):
                 nn.BatchNorm1d(1024),                       # 1024
                 nn.ReLU(),                                  # 1024
                 nn.Linear(1024, 3 * self.n_point),          # 1024 -> 3 * self.n_point
-                nn.Unflatten(1, (self.n_point, 3))          # (self.n_point, 3)
             )
         elif args.type == "mesh":
             # Input: b x 512
@@ -68,8 +67,18 @@ class SingleViewto3D(nn.Module):
             # try different mesh initializations
             mesh_pred = ico_sphere(4, self.device)
             self.mesh_pred = pytorch3d.structures.Meshes(mesh_pred.verts_list()*args.batch_size, mesh_pred.faces_list()*args.batch_size)
-            # TODO:
-            # self.decoder =             
+            num_verts = int(self.mesh_pred.num_verts_per_mesh()[0])
+
+            self.decoder = nn.Sequential(
+                nn.Linear(512, 1024),                       # 512 -> 1024
+                nn.BatchNorm1d(1024),                       # 1024
+                nn.ReLU(),                                  # 1024
+                nn.Linear(1024, 3 * num_verts),             # 1024 -> 3 * num_verts
+                nn.Unflatten(1, (num_verts, 3))             # (num_verts, 3)
+            )
+            # zero-init the offset layer so training starts from the undeformed sphere
+            nn.init.zeros_(self.decoder[3].weight)
+            nn.init.zeros_(self.decoder[3].bias)
 
     def forward(self, images, args):
         results = dict()
@@ -95,8 +104,7 @@ class SingleViewto3D(nn.Module):
             return pointclouds_pred
 
         elif args.type == "mesh":
-            # TODO:
-            # deform_vertices_pred =             
+            deform_vertices_pred = self.decoder(encoded_feat)
             mesh_pred = self.mesh_pred.offset_verts(deform_vertices_pred.reshape([-1,3]))
             return  mesh_pred          
 

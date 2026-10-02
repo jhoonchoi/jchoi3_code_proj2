@@ -1,3 +1,4 @@
+import numpy as np
 import torch
 import pytorch3d.renderer
 import pytorch3d.structures
@@ -228,12 +229,17 @@ def voxels_to_mesh(voxels, thresh=0.5, color=DEFAULT_COLOR):
         voxels (torch.Tensor): (1, Z, Y, X) occupancy probabilities, indexed
             [z, y, x] as produced by utils_vox.voxelize_xyz.
         thresh (float): Voxels with occupancy >= thresh are drawn.
+
+    Returns:
+        Meshes, or None if no voxel is occupied.
     """
     Z, Y, X = voxels.shape[-3:]
 
     # cubify reads the grid as (D, H, W) = (Z, Y, X), emits (x, y, z) verts, and
     # with align="center" puts voxel centers on linspace(-1, 1) along each axis
     mesh = cubify(voxels.reshape(1, Z, Y, X), thresh, align="center")
+    if mesh.isempty():
+        return None
     verts = mesh.verts_list()[0]
 
     # [-1, 1] -> voxel index space -> world coordinates (inverse of the dataset voxelization)
@@ -277,8 +283,15 @@ def render_frames(
     if device is None:
         device = get_device()
 
+    renderable = to_renderable(obj, obj_type, device=device)
+
+    # nothing to draw (e.g. an empty voxel prediction): plain background frames
+    if renderable is None:
+        blank = np.full((image_size, image_size, 3), 255, dtype=np.uint8)
+        return [blank] * n_frames
+
     return render_turntable(
-        to_renderable(obj, obj_type, device=device),
+        renderable,
         flat=flat_shading,
         dist=dist,
         elev=elev,

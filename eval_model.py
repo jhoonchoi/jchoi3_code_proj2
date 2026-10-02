@@ -83,6 +83,14 @@ def compute_sampling_metrics(pred_points, gt_points, thresholds, eps=1e-8):
     metrics = {k: v.cpu() for k, v in metrics.items()}
     return metrics
 
+def return_zero_metrics(thresholds):
+    metrics = {}
+    for t in thresholds:
+        metrics["Precision@%f" % t] = torch.tensor(0.0)
+        metrics["Recall@%f" % t] = torch.tensor(0.0)
+        metrics["F1@%f" % t] = torch.tensor(0.0)
+    return metrics
+
 def evaluate(predictions, mesh_gt, thresholds, args):
     if args.type == "vox":
         voxels_src = predictions
@@ -92,7 +100,10 @@ def evaluate(predictions, mesh_gt, thresholds, args):
         vertices_src = torch.tensor(vertices_src).float()[:, [2, 1, 0]]
         faces_src = torch.tensor(faces_src.astype(int))
         mesh_src = pytorch3d.structures.Meshes([vertices_src], [faces_src])
+        if mesh_src.isempty():
+            return return_zero_metrics(thresholds)
         pred_points = sample_points_from_meshes(mesh_src, args.n_points)
+        
         # voxel index space -> world coordinates (inverse of the dataset voxelization);
         # r2n2_custom puts the voxels in the mesh frame, so no further alignment
         pred_points = utils_vox.Mem2Ref(pred_points, Z, Y, X)

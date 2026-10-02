@@ -287,6 +287,32 @@ def render_frames(
         device=device,
     )
 
+def image_to_frame(image, height):
+    """
+    Converts an (H, W, 3) RGB image in [0, 1] to a uint8 frame of the given
+    height (aspect ratio kept), so it can be stacked next to rendered frames.
+    """
+    image = image.detach().float().cpu().permute(2, 0, 1)[None]  # 1 x 3 x H x W
+    width = round(image.shape[-1] * height / image.shape[-2])
+    image = torch.nn.functional.interpolate(
+        image, size=(height, width), mode="bilinear", align_corners=False
+    )
+    return to_uint8(image[0].permute(1, 2, 0))
+
+
+def render_comparison(image, obj, obj_type, mesh_gt, output_file, fps=30, **render_kwargs):
+    """
+    Renders object and gt mesh on the same turntable and saves them side
+    by side as one gif: input image | object | gt mesh.
+    """
+    obj_frames = render_frames(obj, obj_type, **render_kwargs)
+    gt_frames = render_frames(mesh_gt, "mesh", **render_kwargs)
+
+    # the input image doesn't move; repeat it once per turntable frame
+    image_frame = image_to_frame(image, height=obj_frames[0].shape[0])
+    image_frames = [image_frame] * len(obj_frames)
+
+    return save_gif(hstack_frames(image_frames, obj_frames, gt_frames), output_file, fps=fps)
 
 def render_side_by_side(objs, obj_type, output_file, fps=30, **render_kwargs):
     """

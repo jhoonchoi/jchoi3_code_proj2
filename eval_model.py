@@ -11,6 +11,7 @@ from pytorch3d.ops import knn_points
 import mcubes
 import utils_vox
 import matplotlib.pyplot as plt 
+from starter.render import render_comparison
 
 def get_args_parser():
     parser = argparse.ArgumentParser('Singleto3D', add_help=False)
@@ -152,14 +153,20 @@ def evaluate_model(args):
 
         predictions = model(images_gt, args)
 
+        if args.type == "vox":
+            predictions = torch.sigmoid(predictions)
+
         metrics = evaluate(predictions, mesh_gt, thresholds, args)
 
-        # TODO:
-        # if (step % args.vis_freq) == 0:
-        #     # visualization block
-        #     #  rend = 
-        #     plt.imsave(f'vis/{step}_{args.type}.png', rend)
-      
+        if (step % args.vis_freq) == 0:
+            # visualization block
+            render_comparison(
+                image=feed_dict["images"][0],  # the RGB view the features came from
+                obj=predictions,
+                obj_type=args.type,
+                mesh_gt=mesh_gt,
+                output_file=f'vis/{step}_{args.type}.gif',
+            )
 
         total_time = time.time() - start_time
         iter_time = time.time() - iter_start_time

@@ -20,14 +20,41 @@ class SingleViewto3D(nn.Module):
         if args.type == "vox":
             # Input: b x 512
             # Output: b x 32 x 32 x 32
-            pass
-            # TODO:
-            # self.decoder =             
+            self.decoder = nn.Sequential(
+                nn.Linear(512, 8192),                       # 512 -> 8192
+                nn.Unflatten(1, (128, 4, 4, 4)),            # 8192 -> 128 * 4^3
+                nn.BatchNorm3d(128),                        # 128 * 4^3
+                nn.ReLU(),                                  # 128 * 4^3
+                nn.ConvTranspose3d(                         # 128 * 4^3 -> 64 * 8^3
+                    in_channels=128, 
+                    out_channels=64, 
+                    kernel_size=4, 
+                    stride=2, 
+                    padding=1
+                ),
+                nn.BatchNorm3d(64),                         # 64 * 8^3
+                nn.ReLU(),                                  # 64 * 8^3
+                nn.ConvTranspose3d(                         # 64 * 8^3 -> 32 * 16^3
+                    in_channels=64, 
+                    out_channels=32, 
+                    kernel_size=4,
+                    stride=2, 
+                    padding=1
+                ),
+                nn.BatchNorm3d(32),                         # 32 * 16^3
+                nn.ReLU(),                                  # 32 * 16^3
+                nn.ConvTranspose3d(                         # 32 * 16^3 -> 1 * 32^3
+                    in_channels=32, 
+                    out_channels=1, 
+                    kernel_size=4,
+                    stride=2, 
+                    padding=1
+                ),
+            )
         elif args.type == "point":
             # Input: b x 512
             # Output: b x args.n_points x 3  
             self.n_point = args.n_points
-            # TODO:
             # self.decoder =             
         elif args.type == "mesh":
             # Input: b x 512
@@ -54,8 +81,7 @@ class SingleViewto3D(nn.Module):
 
         # call decoder
         if args.type == "vox":
-            # TODO:
-            # voxels_pred =             
+            voxels_pred = self.decoder(encoded_feat)
             return voxels_pred
 
         elif args.type == "point":

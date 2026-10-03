@@ -1,3 +1,4 @@
+import matplotlib
 import numpy as np
 import torch
 import pytorch3d.renderer
@@ -218,6 +219,16 @@ def color_points(points, lo=-0.4, hi=0.4):
     """
     color = ((points - lo) / (hi - lo)).clamp(0.0, 1.0)
     return pytorch3d.structures.Pointclouds(points=points, features=color)
+
+
+def error_points(points, dists, vmax=0.1, cmap="viridis"):
+    """
+    Builds a point cloud from (N, 3) points colored by a per-point error (N,),
+    on a fixed [0, vmax] colormap so colors mean the same distance in every render.
+    """
+    rgb = matplotlib.colormaps[cmap]((dists / vmax).clamp(0.0, 1.0).cpu().numpy())[:, :3]
+    color = torch.tensor(rgb, dtype=points.dtype, device=points.device)
+    return pytorch3d.structures.Pointclouds(points=[points], features=[color])
 
 
 def voxels_to_mesh(voxels, thresh=0.5, color=DEFAULT_COLOR):

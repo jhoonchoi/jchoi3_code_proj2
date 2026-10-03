@@ -9,6 +9,27 @@ def to_uint8(image):
     return (np.clip(image, 0.0, 1.0) * 255).astype(np.uint8)
 
 
+def colorbar_frame(height, vmax, label, ticks=None, cmap="viridis", width=90):
+    """
+    A height x width uint8 color bar for [0, vmax], to stack next to rendered frames.
+    """
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    dpi = 100
+    fig = plt.figure(figsize=(width / dpi, height / dpi), dpi=dpi)
+    ax = fig.add_axes([0.12, 0.08, 0.22, 0.84])
+    sm = matplotlib.cm.ScalarMappable(norm=matplotlib.colors.Normalize(0, vmax), cmap=cmap)
+    bar = fig.colorbar(sm, cax=ax, ticks=ticks)
+    bar.set_label(label, fontsize=7)
+    bar.ax.tick_params(labelsize=7)
+    fig.canvas.draw()
+    image = np.asarray(fig.canvas.buffer_rgba())[..., :3].copy()
+    plt.close(fig)
+    return image
+
+
 def save_gif(frames, path, fps=15, loop=0):
     duration = 1000 // fps  # ms per frame
     imageio.mimsave(path, frames, duration=duration, loop=loop)

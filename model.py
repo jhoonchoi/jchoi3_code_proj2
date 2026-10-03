@@ -120,6 +120,36 @@ class ParametricDecoder(nn.Module):
             points.append(self.mlps[k](h))
         return torch.cat(points, dim=1)
 
+    @torch.no_grad()
+    def chart_meshes(self, c, resolution=20, cmap="tab10"):
+        """
+        The learned surfaces for one shape (c: (1, c_dim)): each chart evaluated on a
+        resolution x resolution (u, v) grid spanning [0, 1]^2, neighbouring grid points
+        joined into two triangles per cell, one color per chart. Returns a Meshes.
+        """
+        import matplotlib
+        lin = torch.linspace(0, 1, resolution, device=c.device)
+        u, v = torch.meshgrid(lin, lin, indexing="ij")
+        uv = torch.stack([u, v], dim=-1).reshape(1, 1, -1, 2).expand(1, self.n_charts, -1, -1)
+        verts = self.forward(c[:1], uv)[0]  # (n_charts * resolution^2, 3), chart by chart
+
+        # grid cell (i, j) -> triangles (a, b, c) and (b, d, c) with a = (i, j), b = (i+1, j),
+        # c = (i, j+1), d = (i+1, j+1), offset by each chart's first vertex
+        idx = torch.arange(resolution * resolution, device=c.device).reshape(resolution, resolution)
+        a, b = idx[:-1, :-1].reshape(-1), idx[1:, :-1].reshape(-1)
+        cc, d = idx[:-1, 1:].reshape(-1), idx[1:, 1:].reshape(-1)
+        cell_faces = torch.cat([torch.stack([a, b, cc], 1), torch.stack([b, d, cc], 1)])
+        n_v = resolution * resolution
+        faces = torch.cat([cell_faces + k * n_v for k in range(self.n_charts)])
+
+        chart_rgb = torch.as_tensor(matplotlib.colormaps[cmap](range(self.n_charts))[:, :3],
+                                    dtype=verts.dtype, device=verts.device)
+        vert_rgb = chart_rgb.repeat_interleave(n_v, dim=0)
+        return pytorch3d.structures.Meshes(
+            verts=[verts], faces=[faces],
+            textures=pytorch3d.renderer.TexturesVertex(verts_features=[vert_rgb]),
+        )
+
 
 class SingleViewto3D(nn.Module):
     def __init__(self, args):

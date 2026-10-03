@@ -275,6 +275,8 @@ def to_renderable(obj, obj_type, device=None):
         return color_points(obj)
     elif obj_type == "mesh":
         return color_mesh(obj)
+    elif obj_type == "textured_mesh":
+        return obj  # already colored, e.g. ParametricDecoder.chart_meshes
     raise ValueError(f"unknown type {obj_type}")
 
 

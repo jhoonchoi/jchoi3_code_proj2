@@ -193,10 +193,16 @@ def evaluate_model(args):
 
         if (step % args.vis_freq) == 0:
             # visualization block
+            if args.type == "point" and args.point_decoder == "parametric" and args.load_feat:
+                # render the learned chart surfaces (one color per chart), not just the
+                # sampled points; with --load_feat images_gt holds the features
+                vis_obj, vis_type = model.decoder.chart_meshes(images_gt[:1]), "textured_mesh"
+            else:
+                vis_obj, vis_type = predictions, args.type
             render_comparison(
                 image=feed_dict["images"][0],  # the RGB view the features came from
-                obj=predictions,
-                obj_type=args.type,
+                obj=vis_obj,
+                obj_type=vis_type,
                 mesh_gt=mesh_gt,
                 output_file=f'vis/{step}_{output_tag(args)}.gif',
             )

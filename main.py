@@ -148,24 +148,50 @@ def class_imbalance_study(
 
 
 """
+3.1. Implicit network (10 points)
+"""
+def train_implicit(
+        max_iter=5000,
+        n_query=2048,
+        pos_weight=None,
+        retrain=False,
+):
+    # occupancy MLP on (image feature, 3D point), queried on the 32^3 grid; its output
+    # is a voxel grid, so it trains and evaluates through the vox pipeline
+    model_args = ["--vox_decoder", "implicit"]
+    if pos_weight is not None:
+        model_args += ["--pos_weight", str(pos_weight)]
+    train_and_evaluate(
+        type="vox",
+        max_iter=max_iter,
+        model_args=model_args,
+        train_only_args=["--n_query", str(n_query)],
+        tag="vox_implicit" if pos_weight is None else f"vox_implicit_pw{pos_weight:g}",
+        retrain=retrain,
+    )
+
+
+"""
 Helper functions
 """
 def train_and_evaluate(
         type,
         max_iter,
         model_args=(),
+        train_only_args=(),
         tag=None,
         retrain=False,
         vis_freq=200,
 ):
-    # model_args define the model (template, n_points, pos_weight), so training and
-    # evaluation both get them and agree on the model and its checkpoint file
+    # model_args define the model (template, n_points, pos_weight, vox_decoder), so
+    # training and evaluation both get them and agree on the model and its checkpoint
+    # file; train_only_args are training-only settings (e.g. --n_query)
     common_args = ["--type", type, "--load_feat", *model_args]
 
     # train, unless this model's checkpoint already exists
     train_parser = argparse.ArgumentParser(parents=[train_model.get_args_parser()])
     train_args = train_parser.parse_args(
-        common_args + ["--max_iter", str(max_iter), "--save_freq", "500"]
+        common_args + ["--max_iter", str(max_iter), "--save_freq", "500", *train_only_args]
     )
     if retrain or not os.path.exists(get_checkpoint_path(train_args)):
         train_model.train_model(train_args)
@@ -246,6 +272,9 @@ def main():
     # 2.4 Hyperparameter analysis
     template_study()
     class_imbalance_study()
+
+    # 3.1 Implicit network
+    train_implicit()
     return
 
 

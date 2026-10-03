@@ -25,6 +25,8 @@ def get_args_parser():
     parser.add_argument("--n_points", default=1000, type=int)
     parser.add_argument("--template", default="ico4", choices=["ico4", "chair", "torus"], type=str)
     parser.add_argument("--pos_weight", default=None, type=float)  # vox only: weight on occupied voxels
+    parser.add_argument("--vox_decoder", default="deconv", choices=["deconv", "implicit"], type=str)
+    parser.add_argument("--n_query", default=2048, type=int)  # implicit: grid points per shape per step
     parser.add_argument("--w_chamfer", default=1.0, type=float)
     parser.add_argument("--w_smooth", default=0.1, type=float)
     parser.add_argument("--save_freq", default=2000, type=int)
@@ -119,7 +121,15 @@ def train_model(args):
         images_gt, ground_truth_3d = preprocess(feed_dict, args)
         read_time = time.time() - read_start_time
 
-        prediction_3d = model(images_gt, args)
+        if args.type == "vox" and args.vox_decoder == "implicit":
+            # occupancy at a random subset of grid points per shape, as ConvONet trains on
+            # sampled points; targets are the ground-truth voxels at the same points
+            n_grid = model.decoder.grid.shape[0]
+            query_idx = torch.randint(0, n_grid, (images_gt.shape[0], args.n_query), device=args.device)
+            prediction_3d = model(images_gt, args, query_idx=query_idx)
+            ground_truth_3d = ground_truth_3d.flatten(1).gather(1, query_idx)
+        else:
+            prediction_3d = model(images_gt, args)
 
         loss = calculate_loss(prediction_3d, ground_truth_3d, args)
 

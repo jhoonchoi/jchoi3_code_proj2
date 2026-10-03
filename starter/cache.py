@@ -22,6 +22,8 @@ def get_checkpoint_path(args):
         name += f"_{args.template}"
     if args.type == "point" and args.n_points != 1000:
         name += f"_n{args.n_points}"
+    if args.type == "vox" and args.vox_decoder != "deconv":
+        name += f"_{args.vox_decoder}"
     if args.type == "vox" and args.pos_weight is not None:
         name += f"_pw{args.pos_weight:g}"
     return name + ".pth"

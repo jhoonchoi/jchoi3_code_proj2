@@ -29,6 +29,55 @@ def make_template(name, device):
     raise ValueError(f"unknown template {name}")
 
 
+class ResnetBlockFC(nn.Module):
+    def __init__(self, size):
+        super().__init__()
+        self.fc_0 = nn.Linear(size, size)
+        self.fc_1 = nn.Linear(size, size)
+        self.actvn = nn.ReLU()
+        # zero-init the residual branch so each block starts as the identity
+        nn.init.zeros_(self.fc_1.weight)
+
+    def forward(self, x):
+        net = self.fc_0(self.actvn(x))
+        dx = self.fc_1(self.actvn(net))
+        return x + dx
+
+
+class ImplicitDecoder(nn.Module):
+    def __init__(self, c_dim=512, hidden_size=128, n_blocks=5, grid_size=32):
+        super().__init__()
+        self.fc_p = nn.Linear(3, hidden_size)
+        self.fc_c = nn.ModuleList([nn.Linear(c_dim, hidden_size) for _ in range(n_blocks)])
+        self.blocks = nn.ModuleList([ResnetBlockFC(hidden_size) for _ in range(n_blocks)])
+        self.fc_out = nn.Linear(hidden_size, 1)
+
+        # query grid in (-1, 1)^3, flattened in the voxel targets' [z, y, x] order so
+        # grid point i lines up with target voxel i; each row is an (x, y, z) point
+        self.grid_size = grid_size
+        lin = torch.linspace(-1, 1, grid_size)
+        z, y, x = torch.meshgrid(lin, lin, lin, indexing="ij")
+        self.register_buffer("grid", torch.stack([x, y, z], dim=-1).reshape(-1, 3), persistent=False)
+
+    def forward(self, c, query_idx=None):
+        """
+        c: (b, c_dim) image features. query_idx: (b, k) indices into the flattened grid,
+        or None for the full grid. Returns occupancy logits (b, k), or (b, 1, D, D, D)
+        on the full grid, the same layout as the voxel decoder.
+        """
+        b = c.shape[0]
+        p = self.grid[query_idx] if query_idx is not None else self.grid.expand(b, -1, -1)
+        net = self.fc_p(p)
+        for fc_c, block in zip(self.fc_c, self.blocks):
+            # the code is shared by every point of a shape: project it once, broadcast over points
+            net = block(net + fc_c(c)[:, None, :])
+        logits = self.fc_out(torch.relu(net)).squeeze(-1)
+        if query_idx is not None:
+            return logits
+        d = self.grid_size
+        return logits.reshape(b, 1, d, d, d)
+
+
 class SingleViewto3D(nn.Module):
     def __init__(self, args):
         super(SingleViewto3D, self).__init__()
@@ -40,7 +89,11 @@ class SingleViewto3D(nn.Module):
 
 
         # define decoder
-        if args.type == "vox":
+        if args.type == "vox" and args.vox_decoder == "implicit":
+            # Input: b x 512 (+ query points on the 32^3 grid)
+            # Output: b x 1 x 32 x 32 x 32 occupancy logits on the full grid
+            self.decoder = ImplicitDecoder(c_dim=512, hidden_size=128, n_blocks=5, grid_size=32)
+        elif args.type == "vox":
             # Input: b x 512
             # Output: b x 32 x 32 x 32
             self.decoder = nn.Sequential(
@@ -104,7 +157,7 @@ class SingleViewto3D(nn.Module):
             nn.init.zeros_(self.decoder[3].weight)
             nn.init.zeros_(self.decoder[3].bias)
 
-    def forward(self, images, args):
+    def forward(self, images, args, query_idx=None):
         results = dict()
 
         total_loss = 0.0
@@ -119,7 +172,11 @@ class SingleViewto3D(nn.Module):
             encoded_feat = images # in case of args.load_feat input images are pretrained resnet18 features of b x 512 size
 
         # call decoder
-        if args.type == "vox":
+        if args.type == "vox" and args.vox_decoder == "implicit":
+            # query_idx: (b, k) grid points to predict during training; None = full grid
+            return self.decoder(encoded_feat, query_idx)
+
+        elif args.type == "vox":
             voxels_pred = self.decoder(encoded_feat)
             return voxels_pred
 

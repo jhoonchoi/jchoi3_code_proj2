@@ -129,6 +129,7 @@ def train_mesh(
 
 """
 2.4. Analyse effects of hyperparams variations (10 points)
+Generated using claude
 """
 def template_study(
         max_iter=5000,
@@ -174,6 +175,7 @@ def train_implicit(
 
 """
 3.2. Parametric network (10 points)
+Generated using claude
 """
 def train_parametric(
         max_iter=5000,
@@ -194,7 +196,8 @@ def train_parametric(
 
 
 """
-3.3. Extended dataset for training (10 points)
+3.3. Extended dataset for training (10 points) 
+Generated using claude
 """
 def train_three_classes(
         max_iter=5000,

@@ -23,6 +23,7 @@ def get_args_parser():
     parser.add_argument('--type', default='vox', choices=['vox', 'point', 'mesh'], type=str)
     parser.add_argument('--n_points', default=1000, type=int)
     parser.add_argument('--template', default='ico4', choices=['ico4', 'chair', 'torus'], type=str)
+    parser.add_argument('--pos_weight', default=None, type=float)  # only selects the checkpoint
     parser.add_argument('--w_chamfer', default=1.0, type=float)
     parser.add_argument('--w_smooth', default=0.1, type=float)  
     parser.add_argument('--load_checkpoint', action='store_true')  

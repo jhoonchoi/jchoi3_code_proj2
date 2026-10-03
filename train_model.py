@@ -24,6 +24,7 @@ def get_args_parser():
     )
     parser.add_argument("--n_points", default=1000, type=int)
     parser.add_argument("--template", default="ico4", choices=["ico4", "chair", "torus"], type=str)
+    parser.add_argument("--pos_weight", default=None, type=float)  # vox only: weight on occupied voxels
     parser.add_argument("--w_chamfer", default=1.0, type=float)
     parser.add_argument("--w_smooth", default=0.1, type=float)
     parser.add_argument("--save_freq", default=2000, type=int)
@@ -53,7 +54,7 @@ def preprocess(feed_dict, args):
 
 def calculate_loss(predictions, ground_truth, args):
     if args.type == "vox":
-        loss = losses.voxel_loss(predictions, ground_truth)
+        loss = losses.voxel_loss(predictions, ground_truth, pos_weight=args.pos_weight)
     elif args.type == "point":
         loss = losses.chamfer_loss(predictions, ground_truth)
     elif args.type == "mesh":

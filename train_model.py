@@ -27,6 +27,8 @@ def get_args_parser():
     parser.add_argument("--pos_weight", default=None, type=float)  # vox only: weight on occupied voxels
     parser.add_argument("--vox_decoder", default="deconv", choices=["deconv", "implicit"], type=str)
     parser.add_argument("--n_query", default=2048, type=int)  # implicit: grid points per shape per step
+    parser.add_argument("--point_decoder", default="mlp", choices=["mlp", "parametric"], type=str)
+    parser.add_argument("--n_charts", default=10, type=int)  # parametric: charts in the atlas
     parser.add_argument("--w_chamfer", default=1.0, type=float)
     parser.add_argument("--w_smooth", default=0.1, type=float)
     parser.add_argument("--save_freq", default=2000, type=int)

@@ -20,6 +20,10 @@ def get_checkpoint_path(args):
     name = f"checkpoint_{args.type}"
     if args.type == "mesh" and args.template != "ico4":
         name += f"_{args.template}"
+    if args.type == "point" and args.point_decoder != "mlp":
+        name += f"_{args.point_decoder}"
+        if args.n_charts != 10:
+            name += f"_k{args.n_charts}"
     if args.type == "point" and args.n_points != 1000:
         name += f"_n{args.n_points}"
     if args.type == "vox" and args.vox_decoder != "deconv":

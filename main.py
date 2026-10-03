@@ -172,6 +172,27 @@ def train_implicit(
 
 
 """
+3.2. Parametric network (10 points)
+"""
+def train_parametric(
+        max_iter=5000,
+        n_charts=10,
+        n_points=1000,
+        retrain=False,
+):
+    # atlas of 2D -> 3D chart MLPs conditioned on the image feature; its output is a
+    # point cloud, so it trains and evaluates through the point pipeline
+    train_and_evaluate(
+        type="point",
+        max_iter=max_iter,
+        model_args=["--point_decoder", "parametric", "--n_charts", str(n_charts),
+                    "--n_points", str(n_points)],
+        tag="point_parametric" if n_charts == 10 else f"point_parametric_k{n_charts}",
+        retrain=retrain,
+    )
+
+
+"""
 Helper functions
 """
 def train_and_evaluate(
@@ -275,6 +296,9 @@ def main():
 
     # 3.1 Implicit network
     train_implicit()
+
+    # 3.2 Parametric network
+    train_parametric()
     return
 
 

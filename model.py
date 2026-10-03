@@ -78,6 +78,49 @@ class ImplicitDecoder(nn.Module):
         return logits.reshape(b, 1, d, d, d)
 
 
+class ParametricDecoder(nn.Module):
+    def __init__(self, n_points, n_charts=10, c_dim=512, widths=(128, 256, 512, 512)):
+        super().__init__()
+        assert n_points % n_charts == 0, "n_points must be divisible by n_charts"
+        self.n_charts = n_charts
+        self.points_per_chart = n_points // n_charts
+
+        def chart_mlp():
+            layers = []
+            for w_in, w_out in zip(widths[:-1], widths[1:]):
+                layers += [nn.ReLU(), nn.Linear(w_in, w_out)]
+            return nn.Sequential(*layers, nn.ReLU(), nn.Linear(widths[-1], 3, bias=False))
+
+        self.fc_uv = nn.ModuleList([nn.Linear(2, widths[0]) for _ in range(n_charts)])
+        self.fc_c = nn.ModuleList([nn.Linear(c_dim, widths[0]) for _ in range(n_charts)])
+        self.mlps = nn.ModuleList([chart_mlp() for _ in range(n_charts)])
+
+        # evaluation samples: a regular grid of cell centers when points_per_chart is a
+        # square number, otherwise a fixed random set; the same for every chart
+        side = round(self.points_per_chart ** 0.5)
+        if side * side == self.points_per_chart:
+            lin = (torch.arange(side) + 0.5) / side
+            u, v = torch.meshgrid(lin, lin, indexing="ij")
+            uv = torch.stack([u, v], dim=-1).reshape(-1, 2)
+        else:
+            uv = torch.rand(self.points_per_chart, 2, generator=torch.Generator().manual_seed(0))
+        self.register_buffer("eval_uv", uv, persistent=False)
+
+    def forward(self, c, uv=None):
+        b = c.shape[0]
+        if uv is None:
+            if self.training:
+                uv = torch.rand(b, self.n_charts, self.points_per_chart, 2, device=c.device)
+            else:
+                uv = self.eval_uv.expand(b, self.n_charts, -1, -1)
+        points = []
+        for k in range(self.n_charts):
+            # the image code is shared by every sample of a chart: project it once, broadcast
+            h = self.fc_uv[k](uv[:, k]) + self.fc_c[k](c)[:, None, :]
+            points.append(self.mlps[k](h))
+        return torch.cat(points, dim=1)
+
+
 class SingleViewto3D(nn.Module):
     def __init__(self, args):
         super(SingleViewto3D, self).__init__()
@@ -127,9 +170,14 @@ class SingleViewto3D(nn.Module):
                     padding=1
                 ),
             )
+        elif args.type == "point" and args.point_decoder == "parametric":
+            # Input: b x 512 (+ 2D samples per chart)
+            # Output: b x args.n_points x 3
+            self.n_point = args.n_points
+            self.decoder = ParametricDecoder(n_points=args.n_points, n_charts=args.n_charts)
         elif args.type == "point":
             # Input: b x 512
-            # Output: b x args.n_points x 3  
+            # Output: b x args.n_points x 3
             self.n_point = args.n_points
             self.decoder = nn.Sequential(
                 nn.Linear(512, 1024),                       # 512 -> 1024

@@ -30,6 +30,8 @@ def get_checkpoint_path(args):
         name += f"_{args.vox_decoder}"
     if args.type == "vox" and args.pos_weight is not None:
         name += f"_pw{args.pos_weight:g}"
+    if args.classes == "3c":
+        name += "_3c"
     return name + ".pth"
 
 

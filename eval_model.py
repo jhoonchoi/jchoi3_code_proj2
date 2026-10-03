@@ -9,6 +9,7 @@ import pytorch3d
 from pytorch3d.ops import sample_points_from_meshes
 from pytorch3d.ops import knn_points
 import mcubes
+import numpy as np
 import utils_vox
 import matplotlib.pyplot as plt 
 from starter.render import render_comparison
@@ -27,6 +28,11 @@ def get_args_parser():
     parser.add_argument('--vox_decoder', default='deconv', choices=['deconv', 'implicit'], type=str)
     parser.add_argument('--point_decoder', default='mlp', choices=['mlp', 'parametric'], type=str)
     parser.add_argument('--n_charts', default=10, type=int)
+    # classes the model was trained on (selects the checkpoint) and the test set to use;
+    # both default to L3D_FULL_DATASET
+    default_classes = '3c' if dataset_location.use_full_dataset else 'chair'
+    parser.add_argument('--classes', default=default_classes, choices=['chair', '3c'], type=str)
+    parser.add_argument('--eval_classes', default=default_classes, choices=['chair', '3c'], type=str)
     parser.add_argument('--tag', default=None, type=str)  # output name suffix, defaults to --type
     parser.add_argument('--w_chamfer', default=1.0, type=float)
     parser.add_argument('--w_smooth', default=0.1, type=float)  
@@ -132,7 +138,8 @@ def evaluate(predictions, mesh_gt, thresholds, args):
 
 
 def evaluate_model(args):
-    r2n2_dataset = R2N2("test", dataset_location.SHAPENET_PATH, dataset_location.R2N2_PATH, dataset_location.SPLITS_PATH, return_voxels=True, return_feats=args.load_feat)
+    shapenet_path, r2n2_path, splits_path = dataset_location.dataset_paths(args.eval_classes == '3c')
+    r2n2_dataset = R2N2("test", shapenet_path, r2n2_path, splits_path, return_voxels=True, return_feats=args.load_feat)
 
     loader = torch.utils.data.DataLoader(
         r2n2_dataset,
@@ -156,6 +163,7 @@ def evaluate_model(args):
     avg_f1_score = []
     avg_p_score = []
     avg_r_score = []
+    f1_05_by_class = {}
 
     if args.load_checkpoint:
         checkpoint = torch.load(get_checkpoint_path(args), map_location=args.device)
@@ -198,6 +206,7 @@ def evaluate_model(args):
 
         f1_05 = metrics['F1@0.050000']
         avg_f1_score_05.append(f1_05)
+        f1_05_by_class.setdefault(feed_dict['label'][0], []).append(float(f1_05))
         avg_p_score.append(torch.tensor([metrics["Precision@%f" % t] for t in thresholds]))
         avg_r_score.append(torch.tensor([metrics["Recall@%f" % t] for t in thresholds]))
         avg_f1_score.append(torch.tensor([metrics["F1@%f" % t] for t in thresholds]))
@@ -208,6 +217,8 @@ def evaluate_model(args):
     avg_f1_score = torch.stack(avg_f1_score).mean(0)
 
     save_plot(thresholds, avg_f1_score,  args)
+    for label, scores in f1_05_by_class.items():
+        print(f"Avg F1@0.05 {label}: {np.mean(scores):.3f} ({len(scores)} models)")
     print('Done!')
 
 if __name__ == '__main__':

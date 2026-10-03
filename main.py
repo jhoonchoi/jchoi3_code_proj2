@@ -8,6 +8,7 @@ import os
 import fit_data
 import train_model
 import eval_model
+import gt_cache
 from starter.render import render_side_by_side
 from starter.cache import save_cache, load_cache, get_checkpoint_path
 
@@ -193,6 +194,40 @@ def train_parametric(
 
 
 """
+3.3. Extended dataset for training (10 points)
+"""
+def train_three_classes(
+        max_iter=5000,
+        retrain=False,
+):
+    # the 2.2 point decoder trained on chairs, planes and cars; the ground truth is
+    # precomputed once (gt_cache.py), since parsing car meshes every step would dominate
+    cache = gt_cache.cache_path("3c", "train")
+    if not os.path.exists(cache):
+        gt_cache.build(classes="3c", split="train")
+
+    # 1 class vs 3 classes on the same chair test set (2.2's train_pointcloud() is the 1-class model)
+    train_and_evaluate(
+        type="point",
+        max_iter=max_iter,
+        model_args=["--classes", "3c"],
+        train_only_args=["--gt_cache", cache],
+        eval_only_args=["--eval_classes", "chair"],
+        tag="point_3c",
+        retrain=retrain,
+    )
+    # both models on the chair/plane/car test set (per-class F1 at the end of each evaluation)
+    for classes in ["3c", "chair"]:
+        train_and_evaluate(
+            type="point",
+            max_iter=max_iter,
+            model_args=["--classes", classes],
+            eval_only_args=["--eval_classes", "3c"],
+            tag=f"point_{classes}_on_3c",
+        )
+
+
+"""
 Helper functions
 """
 def train_and_evaluate(
@@ -200,13 +235,14 @@ def train_and_evaluate(
         max_iter,
         model_args=(),
         train_only_args=(),
+        eval_only_args=(),
         tag=None,
         retrain=False,
         vis_freq=200,
 ):
-    # model_args define the model (template, n_points, pos_weight, vox_decoder), so
-    # training and evaluation both get them and agree on the model and its checkpoint
-    # file; train_only_args are training-only settings (e.g. --n_query)
+    # model_args define the model (template, n_points, pos_weight, vox_decoder, classes),
+    # so training and evaluation both get them and agree on the model and its checkpoint
+    # file; train_only_args / eval_only_args go to one side only (e.g. --n_query, --eval_classes)
     common_args = ["--type", type, "--load_feat", *model_args]
 
     # train, unless this model's checkpoint already exists
@@ -220,7 +256,8 @@ def train_and_evaluate(
     # evaluate: F1 plot to eval_{tag}.png, example GIFs to vis/{step}_{tag}.gif
     eval_parser = argparse.ArgumentParser(parents=[eval_model.get_args_parser()])
     eval_args = eval_parser.parse_args(
-        common_args + ["--load_checkpoint", "--vis_freq", str(vis_freq), "--tag", tag or type]
+        common_args + ["--load_checkpoint", "--vis_freq", str(vis_freq), "--tag", tag or type,
+                       *eval_only_args]
     )
     os.makedirs("vis", exist_ok=True)
     eval_model.evaluate_model(eval_args)
@@ -299,6 +336,9 @@ def main():
 
     # 3.2 Parametric network
     train_parametric()
+
+    # 3.3 Extended dataset (chair, plane, car)
+    train_three_classes()
     return
 
 

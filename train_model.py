@@ -8,6 +8,7 @@ from model import SingleViewto3D
 from pytorch3d.datasets.r2n2.utils import collate_batched_R2N2
 from pytorch3d.ops import sample_points_from_meshes
 from r2n2_custom import R2N2
+from gt_cache import CachedPointDataset
 from starter.cache import get_checkpoint_path
 
 
@@ -29,6 +30,10 @@ def get_args_parser():
     parser.add_argument("--n_query", default=2048, type=int)  # implicit: grid points per shape per step
     parser.add_argument("--point_decoder", default="mlp", choices=["mlp", "parametric"], type=str)
     parser.add_argument("--n_charts", default=10, type=int)  # parametric: charts in the atlas
+    # training classes: chair-only, or chair/plane/car (Q3.3); defaults to L3D_FULL_DATASET
+    parser.add_argument("--classes", default="3c" if dataset_location.use_full_dataset else "chair",
+                        choices=["chair", "3c"], type=str)
+    parser.add_argument("--gt_cache", default=None, type=str)  # point only: gt_cache.py file to train from
     parser.add_argument("--w_chamfer", default=1.0, type=float)
     parser.add_argument("--w_smooth", default=0.1, type=float)
     parser.add_argument("--save_freq", default=2000, type=int)
@@ -39,6 +44,11 @@ def get_args_parser():
 
 
 def preprocess(feed_dict, args):
+    if args.gt_cache:
+        # CachedPointDataset batch: (features, ground-truth points)
+        feats, pointclouds_tgt = feed_dict
+        return feats.to(args.device), pointclouds_tgt.to(args.device)
+
     images = feed_dict["images"].squeeze(1)
     if args.type == "vox":
         voxels = feed_dict["voxels"].float()
@@ -73,20 +83,28 @@ def calculate_loss(predictions, ground_truth, args):
 
 
 def train_model(args):
-    r2n2_dataset = R2N2(
-        "train",
-        dataset_location.SHAPENET_PATH,
-        dataset_location.R2N2_PATH,
-        dataset_location.SPLITS_PATH,
-        return_voxels=True,
-        return_feats=args.load_feat,
-    )
+    if args.gt_cache:
+        # precomputed features + surface points (gt_cache.py): no mesh parsing per step
+        assert args.type == "point" and args.load_feat, "--gt_cache supports --type point with --load_feat"
+        r2n2_dataset = CachedPointDataset(args.gt_cache, args.n_points)
+        collate_fn, num_workers = None, 0  # in-memory tensors, workers would only copy them
+    else:
+        shapenet_path, r2n2_path, splits_path = dataset_location.dataset_paths(args.classes == "3c")
+        r2n2_dataset = R2N2(
+            "train",
+            shapenet_path,
+            r2n2_path,
+            splits_path,
+            return_voxels=True,
+            return_feats=args.load_feat,
+        )
+        collate_fn, num_workers = collate_batched_R2N2, args.num_workers
 
     loader = torch.utils.data.DataLoader(
         r2n2_dataset,
         batch_size=args.batch_size,
-        num_workers=args.num_workers,
-        collate_fn=collate_batched_R2N2,
+        num_workers=num_workers,
+        collate_fn=collate_fn,
         pin_memory=True,
         drop_last=True,
         shuffle=True,

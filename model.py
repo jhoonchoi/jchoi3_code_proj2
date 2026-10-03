@@ -83,6 +83,7 @@ class SingleViewto3D(nn.Module):
                 nn.BatchNorm1d(1024),                       # 1024
                 nn.ReLU(),                                  # 1024
                 nn.Linear(1024, 3 * self.n_point),          # 1024 -> 3 * self.n_point
+                nn.Unflatten(1, (self.n_point, 3))          # (self.n_point, 3)
             )
         elif args.type == "mesh":
             # Input: b x 512

@@ -24,6 +24,7 @@ def get_args_parser():
     parser.add_argument('--n_points', default=1000, type=int)
     parser.add_argument('--template', default='ico4', choices=['ico4', 'chair', 'torus'], type=str)
     parser.add_argument('--pos_weight', default=None, type=float)  # only selects the checkpoint
+    parser.add_argument('--tag', default=None, type=str)  # output name suffix, defaults to --type
     parser.add_argument('--w_chamfer', default=1.0, type=float)
     parser.add_argument('--w_smooth', default=0.1, type=float)  
     parser.add_argument('--load_checkpoint', action='store_true')  
@@ -48,8 +49,14 @@ def save_plot(thresholds, avg_f1_score, args):
     ax.plot(thresholds, avg_f1_score, marker='o')
     ax.set_xlabel('Threshold')
     ax.set_ylabel('F1-score')
-    ax.set_title(f'Evaluation {args.type}')
-    plt.savefig(f'eval_{args.type}', bbox_inches='tight')
+    ax.set_title(f'Evaluation {output_tag(args)}')
+    plt.savefig(f'eval_{output_tag(args)}', bbox_inches='tight')
+    plt.close(fig)
+
+
+def output_tag(args):
+    # name used for eval_{tag}.png and vis/{step}_{tag}.gif; defaults to the type
+    return args.tag or args.type
 
 
 def compute_sampling_metrics(pred_points, gt_points, thresholds, eps=1e-8):
@@ -180,7 +187,7 @@ def evaluate_model(args):
                 obj=predictions,
                 obj_type=args.type,
                 mesh_gt=mesh_gt,
-                output_file=f'vis/{step}_{args.type}.gif',
+                output_file=f'vis/{step}_{output_tag(args)}.gif',
             )
 
         total_time = time.time() - start_time

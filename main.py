@@ -4,9 +4,12 @@ Running this file should reproduce every result referenced in the webpage
 writeup (projX/assignment.md). Add whatever CLI flags/subcommands you need.
 """
 import argparse
+import os
 import fit_data
+import train_model
+import eval_model
 from starter.render import render_side_by_side
-from starter.cache import save_cache, load_cache
+from starter.cache import save_cache, load_cache, get_checkpoint_path
 
 
 """
@@ -72,8 +75,110 @@ def fit_mesh(
 
 
 """
+2.1. Image to voxel grid (20 points)
+"""
+def train_voxel(
+        max_iter=5000,
+        pos_weight=None,
+        retrain=False,
+):
+    model_args = [] if pos_weight is None else ["--pos_weight", str(pos_weight)]
+    train_and_evaluate(
+        type="vox",
+        max_iter=max_iter,
+        model_args=model_args,
+        tag="vox" if pos_weight is None else f"vox_pw{pos_weight:g}",
+        retrain=retrain,
+    )
+
+
+"""
+2.2. Image to point cloud (20 points)
+"""
+def train_pointcloud(
+        max_iter=5000,
+        n_points=1000,
+        retrain=False,
+):
+    train_and_evaluate(
+        type="point",
+        max_iter=max_iter,
+        model_args=["--n_points", str(n_points)],
+        tag="point" if n_points == 1000 else f"point_n{n_points}",
+        retrain=retrain,
+    )
+
+
+"""
+2.3. Image to mesh (20 points)
+"""
+def train_mesh(
+        max_iter=5000,
+        template="ico4",
+        retrain=False,
+):
+    train_and_evaluate(
+        type="mesh",
+        max_iter=max_iter,
+        model_args=["--template", template],
+        tag="mesh" if template == "ico4" else f"mesh_{template}",
+        retrain=retrain,
+    )
+
+
+"""
+2.4. Analyse effects of hyperparams variations (10 points)
+"""
+def template_study(
+        max_iter=5000,
+        retrain=False,
+):
+    # mesh decoder initial shape: ico4 sphere (2.3 baseline) vs Q1.3 fitted chair vs torus
+    for template in ["chair", "torus"]:
+        train_mesh(max_iter=max_iter, template=template, retrain=retrain)
+
+
+def class_imbalance_study(
+        max_iter=5000,
+        pos_weight=3,
+        retrain=False,
+):
+    # voxel BCE with occupied voxels weighted pos_weight x (2.1 is the unweighted baseline)
+    train_voxel(max_iter=max_iter, pos_weight=pos_weight, retrain=retrain)
+
+
+"""
 Helper functions
 """
+def train_and_evaluate(
+        type,
+        max_iter,
+        model_args=(),
+        tag=None,
+        retrain=False,
+        vis_freq=200,
+):
+    # model_args define the model (template, n_points, pos_weight), so training and
+    # evaluation both get them and agree on the model and its checkpoint file
+    common_args = ["--type", type, "--load_feat", *model_args]
+
+    # train, unless this model's checkpoint already exists
+    train_parser = argparse.ArgumentParser(parents=[train_model.get_args_parser()])
+    train_args = train_parser.parse_args(
+        common_args + ["--max_iter", str(max_iter), "--save_freq", "500"]
+    )
+    if retrain or not os.path.exists(get_checkpoint_path(train_args)):
+        train_model.train_model(train_args)
+
+    # evaluate: F1 plot to eval_{tag}.png, example GIFs to vis/{step}_{tag}.gif
+    eval_parser = argparse.ArgumentParser(parents=[eval_model.get_args_parser()])
+    eval_args = eval_parser.parse_args(
+        common_args + ["--load_checkpoint", "--vis_freq", str(vis_freq), "--tag", tag or type]
+    )
+    os.makedirs("vis", exist_ok=True)
+    eval_model.evaluate_model(eval_args)
+
+
 def fit_and_render(
         type,
         output_file,
@@ -128,9 +233,19 @@ def fit_model(
 
 
 def main():
-    # fit_voxel(max_iter=10000)
-    # fit_pointcloud(max_iter=20000)
-    # fit_mesh(max_iter=15000)
+    # 1. Exploring loss functions
+    fit_voxel(max_iter=10000)
+    fit_pointcloud(max_iter=20000)
+    fit_mesh(max_iter=15000)  # also the 2.4 chair template (output/fit_mesh.pt)
+
+    # 2.1-2.3 Reconstructing 3D from single view (all with --load_feat, CPU)
+    train_voxel()
+    train_pointcloud()
+    train_mesh()
+
+    # 2.4 Hyperparameter analysis
+    template_study()
+    class_imbalance_study()
     return
 
 
